@@ -1,4 +1,4 @@
-# 多Agent生态开发工具
+# 多Agent生态开发工具（裸机版） / Multi-Agent Ecosystem (Bare-metal)
 
 一个**本地化多 Agent 协同开发工作台**：用户在网页上提出开发需求，由 7 个职责固定的 Agent 角色协作完成任务的拆解、执行、质检与交付。**纯裸机运行，无 Docker、无容器沙箱**，安全体系采用「会话/工作区目录隔离 + 操作白名单 + 高危强制人工审批 + 后端二次校验」四层约定。
 
@@ -9,7 +9,22 @@
 
 ---
 
-## ✨核心特性
+## 目录
+
+- [核心特性](#核心特性)
+- [系统架构](#系统架构)
+- [七大 Agent 与模型绑定](#七大-agent-与模型绑定)
+- [安全体系](#安全体系)
+- [快速开始](#快速开始)
+- [配置说明](#配置说明)
+- [HTTP API 概览](#http-api-概览)
+- [项目结构](#项目结构)
+- [已知局限与缺点](#已知局限与缺点)
+- [许可证说明](#许可证说明)
+
+---
+
+## 核心特性
 
 以下能力全部由代码实际实现，未做任何虚构。
 
@@ -64,7 +79,35 @@
 
 ---
 
-## 🖥️系统架构
+## 系统架构
+
+```mermaid
+flowchart TD
+    U[用户 / 浏览器前端<br/>原生 HTML·CSS·JS] -->|"HTTP / SSE"| API[FastAPI 服务层<br/>backend/main.py]
+
+    subgraph 核心编排
+        API --> RT["EcosystemRuntime 运行时编排器<br/>run_pipeline / 队长循环"]
+        RT --> DISPATCH["调度规划Agent 队长<br/>任务拆解·调度·仲裁裁决"]
+        DISPATCH --> CODE["代码工程Agent<br/>文件·命令·下载（唯一执行端）"]
+        DISPATCH --> DOC["文档信息Agent<br/>长文档解析"]
+        DISPATCH --> VISION["视觉感知Agent<br/>图像解析"]
+        DISPATCH --> MEM["记忆管理Agent<br/>记忆压缩·向量化·检索"]
+        DISPATCH --> EVAL["评估校验Agent<br/>质量闸门·安全校验"]
+        DISPATCH --> DELIVERY["交互交付Agent<br/>结果润色·前端格式化"]
+    end
+
+    RT --> ARB["仲裁中心 arbitration<br/>冲突检测·裁决·唯一基准"]
+    RT --> APPROVAL["审批中心 approval_center<br/>高危人工审批·后端二次校验"]
+    RT --> EXEC["执行器 executor<br/>后端硬编码磁盘修改"]
+
+    RT --> DB["SQLite 日志库 database"]
+    RT --> VS["向量库 vector_store<br/>numpy 余弦检索·90天TTL"]
+    RT --> FG["文件守卫 file_guard<br/>工作区目录隔离"]
+    RT --> MC["模型客户端 model_client<br/>OpenAI 兼容协议 + 生态位补位"]
+
+    API --> AUTH["登录鉴权 auth<br/>bcrypt·会话令牌"]
+    API --> CONF["配置中心 config_store<br/>AES-256-GCM 密钥加密"]
+```
 
 - **能力层** `backend/agents/`：7 个职责单一、绑定固定的 Agent；
 - **总线层** `backend/bus/`：消息、路由、任务状态机；
@@ -74,7 +117,7 @@
 
 ---
 
-## 🤖七大 Agent 与模型绑定
+## 七大 Agent 与模型绑定
 
 角色 ↔ 模型绑定**固定、不可调换**（代码有断言强制校验）：
 
@@ -95,7 +138,7 @@
 
 ---
 
-## 📄安全体系
+## 安全体系
 
 | 层级 | 机制（代码实现） |
 |---|---|
@@ -110,7 +153,7 @@
 
 ---
 
-## 🚀快速开始
+## 快速开始
 
 要求：Python 3.12。
 
@@ -143,15 +186,29 @@ python run.py --show-root
 
 ---
 
-## ⚙️配置说明
+## 配置说明
 
 - **模型厂商**：DeepSeek（`https://api.deepseek.com`）、通义千问 Qwen（`https://dashscope.aliyuncs.com/compatible-mode/v1`）、Kimi 月之暗面（`https://api.moonshot.cn/v1`）、智谱 GLM（`https://open.bigmodel.cn/api/paas/v4`）。全部走 OpenAI 兼容 `/chat/completions` 协议。
-- **模型标识**：代码里注册了各家合法标识（如 `deepseek-flash`、`qwen3.8-max`、`kimi-k3`、`glm-5.3` 等），并自动识别/清理历史遗留的旧模型标识。
+- **模型标识**：代码里注册了各家合法标识（如 `deepseek-flash`、`qwen3.8-max`、`kimi-k3`、`glm-5.3` 等），并自动识别/清理历史遗留的旧模型标识（含已移除的豆包 doubao 历史标识）。
 - **生态位补位开关**：默认开启，可在设置页关闭；补位仅在已通过连通测试的模型中进行。
 - **配置迁移**：配置文件带 schema 版本号（当前 `1.5`），升级时平滑迁移旧字段、不丢失用户自定义。
 
+---
 
-## 📁项目结构
+## HTTP API 概览
+
+（全部路由在 `backend/main.py` 中实现）
+
+- 鉴权：`GET /api/health`、`GET /api/auth/status`、`POST /api/auth/login`、`POST /api/auth/logout`
+- 配置：`GET/POST /api/config`、`POST /api/config/test-key`、`POST /api/config/test-model`、`POST /api/config/validate-model`、`GET /api/config/vendors`、`POST /api/config/vendor-models`、`GET /api/config/runtime-targets`、`GET /api/model-constraints`、`POST /api/config/verify-runtime-call`
+- 会话/任务：`POST /api/session/chat`、`GET /api/session/list`、`GET /api/session/{id}`、`POST /api/session/create`、`POST /api/session/delete`、`POST /api/session/move`、`GET /api/session/{id}/timers`、`GET /api/task/{id}`、`GET /api/task/{id}/stream`（SSE）、`GET /api/task/{id}/chain`、`GET /api/task/{id}/snapshot`、`POST /api/task/cancel`、`GET /api/task/timer`、`GET /api/task/timer/history`
+- 审批：`GET /api/approval/list`、`POST /api/approval/submit`、`GET /api/approval/status/{id}`、`POST /api/approval/clear`、`POST /api/approval/timeout_scan`
+- 工作区：`GET /api/workspace/list`、`POST /api/workspace/create`、`POST /api/workspace/rename`、`POST /api/workspace/delete`、`GET /api/workspace/folders`、`POST /api/workspace/folder/probe`、`POST /api/workspace/folder/add`、`POST /api/workspace/folder/remove`、`GET /api/workspace/root`
+- 其他：`POST /api/background/upload`、`GET /api/background/file/{name}`、`GET /api/memory/list`、`POST /api/memory/clear`、`GET /api/backup/export`、`GET /api/logs/errors`、`GET /api/stream/stats`、`GET /api/status`
+
+---
+
+## 项目结构
 
 ```
 .
@@ -171,39 +228,41 @@ python run.py --show-root
 ```
 
 ---
->[!warning]
->## ⚠️已知局限与缺点
->
->
->1. **依赖外部大模型 API 且需联网**：系统本身不做推理，全部调用 4 家外部厂商（DeepSeek / 通义千问 / Kimi / 智谱 GLM）的在线 API。未配置对应厂商 Key 时，绑定该厂商的角色能力不可用；离线环境下系统无法完成任务。首次启动必须配置至少一个模型>并通过连通测试。
->
->2. **角色 ↔ 模型绑定固定不可调换**：七大 Agent 与厂商/模型一一绑定，代码用断言强制校验（`ROLE_IMMUTABLE`），用户不能把某角色任意换绑到其它模型；只能整体覆盖某厂商的模型标识。
->
->3. **裸机安全是「约定式隔离」，非强隔离**：没有 Docker/容器沙箱。安全依赖「目录隔离 + 白名单 + 高危审批 + 后端二次校验」四层约定，高危命令/删除仍需人工放行；若运行环境目录权限配置不当，存在越权风险（代码已在运行路径上尽力拦截）。适合单>机、受控环境，不适合作为多租户公网服务。
->
->4. **高危操作必须人工审批、无法全自动无人值守**：审批开关永久开启、不可关闭；批量删除 ≥2 个文件即判高危，审批等待默认 30 秒超时后自动做降级决策。追求全自动 CI/CD 的流程会因人工介入而中断。
->
->5. **长期记忆为本地简易向量库**：基于 numpy 精确余弦相似度检索，非外部向量数据库服务；90 天 TTL 自动淘汰，向量库异常时自动降级为仅短期记忆。记忆规模大时检索性能有限。
->
->6. **SQLite 单机单进程设计**：WAL + 单连接 + 线程锁，适合单实例；不面向多进程/多节点横向扩展，多用户高并发不是设计目标。
->
->7. **单内置管理员账号**：仅 `admin` 一个登录账号（bcrypt 存储），无多用户、无角色/权限管理系统；会话令牌密钥在进程内随机生成，重启服务后所有会话失效需重新登录。
->
->8. **文档 Agent 不返回原始长文本**：约束为只输出「结构化摘要 + 限量引用片段」（引用 ≤200 字、总量 ≤原文 10%），需要原文全文的场景无法直接获得。
->
->9. **质量闸门有打回上限**：评估校验最多打回 2 次、代码重试最多 3 次、单任务全局迭代最多 20 次、计划再生成重试最多 1 次。复杂或易错的任务可能以「失败」终止并上报用户，不能无限自愈。
->
->10. **文件上传限制**：单文件 50MB 上限，扩展名白名单过滤，禁止可执行文件；仅支持白名单内的图片/文档/文本类型。
->
->11. **前端为原生单体**：`frontend/app.js`（约 211KB）为原生 JS 单体，无现代前端框架与工程化构建、无单元测试体系（测试文件已随本项目移除）；`backend/main.py`（约 120KB）与 `backend/services/runtime.py`（约 350KB）为超大单文件，长期>维护需注意模块拆分。
->
->12. **默认路径偏 Windows**：数据根目录默认走 Windows `%USERPROFILE%` 规范路径，跨平台部署需显式指定 `MAE_ROOT` 环境变量。
->
->13. **无独立复杂统计/报表页**：Token 统计、日志、审批记录等仅通过少量只读接口暴露，界面只展示聚合信息，无深度可视化报表。
+
+## 已知局限与缺点
+
+以下为代码/文档中真实存在或设计上可预期的限制，发布前请知悉：
+
+1. **依赖外部大模型 API 且需联网**：系统本身不做推理，全部调用 4 家外部厂商（DeepSeek / 通义千问 / Kimi / 智谱 GLM）的在线 API。未配置对应厂商 Key 时，绑定该厂商的角色能力不可用；离线环境下系统无法完成任务。首次启动必须配置至少一个模型并通过连通测试。
+
+2. **角色 ↔ 模型绑定固定不可调换**：七大 Agent 与厂商/模型一一绑定，代码用断言强制校验（`ROLE_IMMUTABLE`），用户不能把某角色任意换绑到其它模型；只能整体覆盖某厂商的模型标识。
+
+3. **裸机安全是「约定式隔离」，非强隔离**：没有 Docker/容器沙箱。安全依赖「目录隔离 + 白名单 + 高危审批 + 后端二次校验」四层约定，高危命令/删除仍需人工放行；若运行环境目录权限配置不当，存在越权风险（代码已在运行路径上尽力拦截）。适合单机、受控环境，不适合作为多租户公网服务。
+
+4. **高危操作必须人工审批、无法全自动无人值守**：审批开关永久开启、不可关闭；批量删除 ≥2 个文件即判高危，审批等待默认 30 秒超时后自动做降级决策。追求全自动 CI/CD 的流程会因人工介入而中断。
+
+5. **长期记忆为本地简易向量库**：基于 numpy 精确余弦相似度检索，非外部向量数据库服务；90 天 TTL 自动淘汰，向量库异常时自动降级为仅短期记忆。记忆规模大时检索性能有限。
+
+6. **SQLite 单机单进程设计**：WAL + 单连接 + 线程锁，适合单实例；不面向多进程/多节点横向扩展，多用户高并发不是设计目标。
+
+7. **单内置管理员账号**：仅 `admin` 一个登录账号（bcrypt 存储），无多用户、无角色/权限管理系统；会话令牌密钥在进程内随机生成，重启服务后所有会话失效需重新登录。
+
+8. **文档 Agent 不返回原始长文本**：约束为只输出「结构化摘要 + 限量引用片段」（引用 ≤200 字、总量 ≤原文 10%），需要原文全文的场景无法直接获得。
+
+9. **质量闸门有打回上限**：评估校验最多打回 2 次、代码重试最多 3 次、单任务全局迭代最多 20 次、计划再生成重试最多 1 次。复杂或易错的任务可能以「失败」终止并上报用户，不能无限自愈。
+
+10. **文件上传限制**：单文件 50MB 上限，扩展名白名单过滤，禁止可执行文件；仅支持白名单内的图片/文档/文本类型。
+
+11. **前端为原生单体**：`frontend/app.js`（约 211KB）为原生 JS 单体，无现代前端框架与工程化构建、无单元测试体系（测试文件已随本项目移除）；`backend/main.py`（约 120KB）与 `backend/services/runtime.py`（约 350KB）为超大单文件，长期维护需注意模块拆分。
+
+12. **默认路径偏 Windows**：数据根目录默认走 Windows `%USERPROFILE%` 规范路径，跨平台部署需显式指定 `MAE_ROOT` 环境变量。
+
+13. **无独立复杂统计/报表页**：Token 统计、日志、审批记录等仅通过少量只读接口暴露，界面只展示聚合信息，无深度可视化报表。
 
 ---
 
-## 📄许可证说明
+## 许可证说明
 
 本仓库为本地化开发工具原型。发布前请自行补充开源许可证（如 MIT/Apache-2.0），并确认你对外部模型厂商 API 的调用符合各厂商的使用条款。
 
+> 提示：`ven/` 是本地 Python 虚拟环境目录，不应提交到 Git；建议在仓库根目录添加 `.gitignore`（忽略 `ven/`、`__pycache__/`、运行时产生的 `config/`、`sessions/`、`uploads/`、`logs/`、`vector_db/` 等数据目录）。

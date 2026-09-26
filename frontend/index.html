@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Agent Ecosystem · 裸机版</title>
+<link rel="stylesheet" href="/static/styles.css?v=1.7">
+</head>
+<body class="bg-night">
+<div class="app">
+
+  <!-- ==================================================================
+       左侧边栏（固定 280px）· 第7.1
+       【需求点 二、1】主体列表改为「工作区分组列表」：工作区(可折叠分组) -> 归属会话
+       ================================================================== -->
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-icon">◆</span><span class="brand-name">Multi-Agent Ecosystem</span></div>
+    <button class="new-session-btn" id="btnNewSession"><span>＋</span>新会话</button>
+    <div class="sb-divider"></div>
+
+    <!-- 搜索输入框（保留原有位置：标题与工作区列表之间） -->
+    <div class="search-row">
+      <div class="search-box">
+        <span>🔍</span>
+        <input type="text" id="searchInput" placeholder="搜索工作区 / 会话">
+      </div>
+      <!-- 【需求点 BUG-NEW3】视图选项：按钮只显示齿轮图标（不显示文字），
+           点击弹出下拉菜单（分组方式 / 排序方式），功能与偏好持久化完全不变 -->
+      <button class="icon-btn view-opt-btn" id="btnViewOptions"
+              data-tip="视图选项（分组方式 / 排序方式）" aria-label="视图选项">⚙︎</button>
+      <div class="view-options-menu glass hidden" id="viewOptionsMenu">
+        <div class="vo-section">
+          <div class="vo-title">分组方式</div>
+          <label class="vo-item" data-group-mode="workspace">
+            <span class="vo-check" data-check="workspace">✓</span>按工作区
+          </label>
+          <label class="vo-item" data-group-mode="flat">
+            <span class="vo-check" data-check="flat">✓</span>单列表
+          </label>
+        </div>
+        <div class="vo-sep"></div>
+        <div class="vo-section">
+          <div class="vo-title">排序方式</div>
+          <label class="vo-item" data-sort-mode="manual">
+            <span class="vo-check" data-check="manual">✓</span>手动排序
+          </label>
+          <label class="vo-item" data-sort-mode="recent">
+            <span class="vo-check" data-check="recent">✓</span>最近更新
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- 【需求点 二、3】工作区操作：新建工作区 -->
+    <div class="ws-toolbar">
+      <span class="group-label" style="padding:0;">工作区</span>
+      <button class="ws-new-btn" id="btnNewWorkspace" data-tip="新建工作区">＋ 新建工作区</button>
+    </div>
+
+    <!-- 工作区分组树 -->
+    <div class="session-scroll">
+      <div id="workspaceList"></div>
+    </div>
+
+    <div class="sb-sysinfo" id="sysInfo"></div>
+
+    <div class="sb-footer">
+      <button class="footer-btn" id="btnBackground"><span>🖼</span>背景</button>
+      <button class="footer-btn" id="btnSettings"><span>⚙</span>设置</button>
+    </div>
+  </aside>
+
+  <!-- ========================= 右侧主区域 · 第7.2 ========================= -->
+  <main class="main">
+    <div class="topbar glass">
+      <!-- 【需求点 二、1】会话窗口左上角：工作区选择下拉按钮（显示当前激活工作区名称） -->
+      <div class="ws-picker" id="wsPicker">
+        <button class="ws-picker-btn" id="btnWsPicker" data-tip="切换 / 添加工作区">
+          <span class="ws-picker-icon">🗂</span>
+          <span class="ws-picker-name" id="wsPickerName">默认工作区</span>
+          <span class="ws-picker-caret">▾</span>
+        </button>
+        <div class="ws-picker-menu glass hidden" id="wsPickerMenu"></div>
+      </div>
+
+      <!-- ==================================================================
+           【需求点 二、任务执行计时器】
+           位置：对话框（顶栏）左上角，紧邻工作区下拉组件右侧；
+           层级：--z-timer（与工作区下拉同级，均为页面最高图层族），
+                 不遮挡下拉按钮本身，且高于 .topbar / 内容区；
+           默认文案：未开始任务；计时格式：已耗时：00:00:00
+           ================================================================== -->
+      <div class="task-timer" id="taskTimer" data-state="idle"
+           data-tip="任务执行计时器：任务提交后自动开始计时，任务结束/取消后停止">
+        <span class="timer-icon" id="timerIcon">⏱</span>
+        <span class="timer-main" id="timerText">未开始任务</span>
+        <span class="timer-sub hidden" id="timerSub"></span>
+      </div>
+
+      <div class="tabs" id="tabs">
+        <button class="tab-btn active" data-tab="chat">对话</button>
+        <button class="tab-btn" data-tab="approval">审批<span class="tab-dot hidden" id="approvalDot"></span></button>
+        <span class="tab-indicator" id="tabIndicator"></span>
+      </div>
+      <div class="topbar-right">
+        <!-- 【需求点 二、2-c】任务执行中可取消/终止（取消后计时同时停止） -->
+        <button class="task-cancel-btn hidden" id="btnCancelTask"
+                data-tip="取消 / 终止当前任务（同时停止计时）">■ 终止任务</button>
+        <!-- 【需求点 二、2】当前文件操作根目录（越权边界即时可见） -->
+        <span class="root-chip" id="rootChip" data-tip="所有 Agent 的文件操作仅限此目录内"></span>
+        <span class="degrade-chip hidden" id="degradeChip" data-tip="模型降级 / 生态位补位提示"></span>
+        <button class="session-log-btn" id="btnSessionLog">Session 日志 <span>⌄</span></button>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <!-- ---------- 对话页面 · 第7.3 ---------- -->
+      <div class="tab-content" id="chatTab">
+
+        <!-- 【需求点 二、1】未选中任何会话 → 欢迎首页（不展示空白聊天窗口） -->
+        <div class="welcome glass hidden" id="welcomePage">
+          <div class="welcome-inner">
+            <div class="welcome-brand"><span class="welcome-icon">◆</span> Multi-Agent Ecosystem</div>
+            <h2 class="welcome-title" id="welcomeTitle">开始你的第一个任务</h2>
+            <p class="welcome-sub">
+              当前工作区：<b id="welcomeWorkspace">默认工作区</b>
+              <span class="welcome-hint">· 输入需求后将自动创建会话并进入对话</span>
+            </p>
+            <div class="welcome-input glass">
+              <textarea id="welcomeInput" rows="3"
+                placeholder="描述你的需求，例如：帮我写一个 Python 脚本，读取 CSV 并生成汇总报告…"></textarea>
+              <div class="welcome-actions">
+                <span class="welcome-tip">Enter 发送 · Shift+Enter 换行 · 高危操作会自动走人工审批</span>
+                <button class="send-btn" id="btnWelcomeSend">➤</button>
+              </div>
+            </div>
+            <div class="welcome-cards">
+              <div class="wc-item"><span>🧠</span><b>七大 Agent 协同</b><i>调度规划 / 代码工程 / 文档信息 / 视觉感知 / 记忆管理 / 评估校验 / 交互交付</i></div>
+              <div class="wc-item"><span>🛡</span><b>裸机安全隔离</b><i>会话独立目录 + 操作白名单 + 高危强制审批 + 后端二次校验</i></div>
+              <div class="wc-item"><span>🔁</span><b>模型生态位补位</b><i>专属模型不可用时按 DeepSeek &gt; Qwen &gt; GLM &gt; Kimi &gt; Kimi-Flash 自动补齐</i></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 选中会话后渲染的原有对话页面（任务面板 + 消息区 + 底部输入框 + 状态栏） -->
+        <div class="chat-view hidden" id="chatView">
+          <!-- 顶部任务面板：可展开/收起、任务状态 -->
+          <div class="task-panel glass" id="taskPanel">
+            <div class="task-header" id="taskHeader">
+              <span class="task-title-group">☰ 任务 <span class="task-badge" id="taskBadge">0</span></span>
+              <span class="task-toggle" id="taskToggle">⌄</span>
+            </div>
+            <div class="task-list" id="taskList"></div>
+          </div>
+          <!-- 消息区域：AI思考过程（可折叠、分步图标、连接线）+ 正式回复 -->
+          <div class="messages glass" id="messages"></div>
+        </div>
+      </div>
+
+      <!-- ---------- 审批页面 · 第7.2（逻辑不做修改） ---------- -->
+      <div class="tab-content hidden" id="approvalTab">
+        <div class="approval-toolbar glass">
+          <span class="approval-desc">本会话中自动放行与人工审批的记录（最新在上） · 高危审批开关永久开启，不可关闭</span>
+          <div class="approval-actions">
+            <button class="btn-ghost" id="btnApprovalScope">仅本会话</button>
+            <button class="btn-ghost danger" id="btnApprovalClear">清空全部</button>
+          </div>
+        </div>
+        <div class="approval-list glass" id="approvalList"></div>
+      </div>
+    </div>
+
+    <!-- ---------- 底部输入框 + 状态栏 · 第7.3（仅选中会话时展示） ---------- -->
+    <div class="input-area glass hidden" id="inputArea">
+      <div class="attach-strip hidden" id="attachStrip"></div>
+      <!-- 【需求点 Bug2 边界约束1】待审批阻塞提示条：审批未完成前拦截普通消息提交 -->
+      <div class="approval-block-banner hidden" id="approvalBlockBanner" role="alert">
+        <span class="abb-icon">⏸</span>
+        <span class="abb-text" id="approvalBlockText">存在待审批任务，请先完成审批</span>
+      </div>
+      <div class="input-row">
+        <div class="plus-wrap">
+          <button class="plus-btn" id="btnPlus">＋</button>
+          <div class="popover glass hidden" id="plusMenu">
+            <button data-action="upload">📎 文件上传</button>
+            <button data-action="workspace">🗂 工作区内修改</button>
+            <button data-action="command">⌘ 插入指令</button>
+          </div>
+        </div>
+        <textarea id="chatInput" rows="1" placeholder="发消息或做任务... / 调用指令 @ 文件或对话"></textarea>
+        <select class="model-select" id="modelSelect"></select>
+        <button class="send-btn" id="btnSend">➤</button>
+      </div>
+      <div class="status-bar">
+        <div class="status-left" id="statusLeft"></div>
+        <div class="status-right" id="statusRight"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ========================= 背景选择弹窗 · 第7.1 背景功能 ========================= -->
+<div class="modal-overlay hidden" id="bgModalOverlay">
+  <div class="modal glass">
+    <div class="modal-header"><h3>选择背景</h3><button class="modal-close" data-close="bgModalOverlay">✕</button></div>
+    <div class="bg-options" id="bgOptions">
+      <div class="bg-option" data-bg="night"><div class="bg-thumb bg-night"></div><span>深夜卧室</span></div>
+      <div class="bg-option" data-bg="black"><div class="bg-thumb bg-black"></div><span>极简纯黑</span></div>
+      <div class="bg-option" data-bg="stars"><div class="bg-thumb bg-stars"></div><span>星空</span></div>
+      <div class="bg-option" id="bgUploadOption"><div class="bg-thumb upload-thumb">＋</div><span>自定义上传</span></div>
+    </div>
+    <p class="tip-text">自定义背景经后端安全校验（白名单 / 50MB 上限 / 禁止可执行文件）后保存到本机 uploads 目录</p>
+    <input type="file" id="bgFileInput" accept="image/*" class="hidden">
+  </div>
+</div>
+
+<!-- ========================= 设置弹窗（API Key）· 第7.1 设置功能 ========================= -->
+<div class="modal-overlay hidden" id="settingsModalOverlay">
+  <div class="modal glass wide">
+    <div class="modal-header"><h3>模型 API Key 配置</h3><button class="modal-close" data-close="settingsModalOverlay">✕</button></div>
+
+    <!-- 【需求点 Bug1】设置页常驻提示条：保存/测试错误不自动消失，修改输入后清除 -->
+    <div class="alert-banner hidden" id="settingsAlert"></div>
+
+    <div class="sec-note">密钥以 <b>AES-256-GCM</b> 加密 + <b>SHA256 篡改校验</b> 存储于本机 config 目录，明文永不返回前端。</div>
+
+    <!-- 【需求点 三、4】模型生态位自动补位开关（默认开启，可手动关闭） -->
+    <div class="fallback-switch" id="fallbackSwitchBox">
+      <div class="fs-main">
+        <label class="fs-toggle">
+          <input type="checkbox" id="ecosystemFallbackToggle">
+          <span class="fs-slider"></span>
+        </label>
+        <div class="fs-text">
+          <b>开启模型生态位自动补位</b>
+          <span id="fallbackSwitchDesc">补位优先级 DeepSeek &gt; Qwen &gt; GLM &gt; Kimi &gt; Kimi-Flash</span>
+        </div>
+      </div>
+      <div class="fs-note" id="fallbackSwitchState"></div>
+    </div>
+
+    <div id="apiKeyList"></div>
+    <button class="btn-primary" id="btnSaveKeys">保存配置</button>
+    <p class="tip-text">密钥仅本地存储，不会上传；测试连通性接口超时 5 秒</p>
+  </div>
+</div>
+
+<!-- ========================= 首次启动强制 API 配置向导 · 第7.4 ========================= -->
+<div class="modal-overlay hidden" id="wizardOverlay">
+  <div class="modal glass wide wizard">
+    <div class="modal-header">
+      <h3>① 首次启动 · 模型 API 配置向导</h3>
+      <span class="wizard-step" id="wizardStepLabel">必填</span>
+    </div>
+    <p class="wizard-intro">
+      检测到本机尚无有效配置，必须完成 <b>至少一个模型</b> 的 API Key 配置并通过 <b>连通性测试</b> 才能进入工作台。
+    </p>
+    <!-- 【需求点 Bug1】向导内错误提示常驻，修改输入后清除 -->
+    <div class="alert-banner hidden" id="wizardAlert"></div>
+    <div id="wizardList"></div>
+    <div class="wizard-actions">
+      <button class="btn-primary" id="btnWizardFinish">完成配置并进入工作台</button>
+    </div>
+    <p class="tip-text" id="wizardHint">尚未配置任何模型</p>
+  </div>
+</div>
+
+<!-- 【需求点 Bug8】原「高危操作审批弹窗」已删除：
+     高危审批内容改为内联渲染在对话消息区末尾（用户输入框正上方），
+     由 app.js 的 renderInlineApprovalCards() 生成，不再使用任何弹窗。 -->
+
+<!-- ============ 【需求点 二、3】工作区重命名 / 删除二次确认 弹窗 ============ -->
+<div class="modal-overlay hidden" id="wsRenameOverlay">
+  <div class="modal glass">
+    <div class="modal-header"><h3>重命名工作区</h3><button class="modal-close" data-close="wsRenameOverlay">✕</button></div>
+    <div class="api-key-row"><label>工作区名称</label><input type="text" id="wsRenameInput" placeholder="请输入新的工作区名称"></div>
+    <button class="btn-primary" id="btnWsRenameConfirm">确认重命名</button>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="wsDeleteOverlay">
+  <div class="modal glass danger-modal">
+    <div class="modal-header"><h3>⚠️ 删除工作区</h3></div>
+    <div class="danger-op" id="wsDeleteText"></div>
+    <div class="danger-warning">删除后该工作区下的全部会话、任务、消息与审批记录将被一并清理，且不可恢复。</div>
+    <div class="danger-actions">
+      <button class="btn-reject" id="btnWsDeleteCancel">取消</button>
+      <button class="btn-confirm" id="btnWsDeleteConfirm" style="background:var(--danger)">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 【需求点 二、3】会话移动归属 弹窗 ============ -->
+<div class="modal-overlay hidden" id="sessionMoveOverlay">
+  <div class="modal glass">
+    <div class="modal-header"><h3>移动会话归属</h3><button class="modal-close" data-close="sessionMoveOverlay">✕</button></div>
+    <p class="tip-text" style="text-align:left;margin:0 0 12px;" id="sessionMoveText"></p>
+    <div class="ws-move-list" id="sessionMoveList"></div>
+  </div>
+</div>
+
+<!-- ============ 【需求点 二、1】手动填写工作区目录路径（浏览器不暴露绝对路径时的兜底） ============ -->
+<div class="modal-overlay hidden" id="folderPathOverlay">
+  <div class="modal glass">
+    <div class="modal-header"><h3>添加工作区目录</h3><button class="modal-close" data-close="folderPathOverlay">✕</button></div>
+    <p class="tip-text" style="text-align:left;margin:0 0 12px;" id="folderPathHint"></p>
+    <div class="api-key-row">
+      <label style="width:86px;">目录路径</label>
+      <input type="text" id="folderPathInput" placeholder="例如 D:\projects\my-app">
+    </div>
+    <button class="btn-primary" id="btnFolderPathConfirm">确认添加为工作区</button>
+    <p class="tip-text">该目录将成为所有 Agent 的文件操作根目录；越界访问会被后端直接拒绝</p>
+  </div>
+</div>
+
+<!-- ============ 【需求点 二、1】同名文件夹候选选择 ============ -->
+<div class="modal-overlay hidden" id="folderPickOverlay">
+  <div class="modal glass">
+    <div class="modal-header"><h3>选择工作区目录</h3><button class="modal-close" data-close="folderPickOverlay">✕</button></div>
+    <p class="tip-text" style="text-align:left;margin:0 0 12px;" id="folderPickHint"></p>
+    <div class="ws-move-list" id="folderPickList"></div>
+  </div>
+</div>
+
+<!-- ========================= 登录弹窗 · 第6章 6.3 规则2 ========================= -->
+<div class="modal-overlay hidden" id="loginOverlay">
+  <div class="modal glass">
+    <div class="modal-header"><h3>后台登录</h3></div>
+    <div class="alert-banner hidden" id="loginAlert"></div>
+    <div class="api-key-row"><label>用户名</label><input type="text" id="loginUser" value="admin" autocomplete="username"></div>
+    <div class="api-key-row"><label>密码</label><input type="password" id="loginPass" autocomplete="current-password" placeholder="初始口令 admin123"></div>
+    <button class="btn-primary" id="btnLogin">登录</button>
+    <p class="tip-text">口令以 bcrypt 哈希存储，禁止明文；局域网访问强制登录</p>
+  </div>
+</div>
+
+<!-- ========================= Session 日志抽屉 ========================= -->
+<div class="modal-overlay hidden" id="logModalOverlay">
+  <div class="modal glass wide">
+    <div class="modal-header"><h3>Session 日志</h3><button class="modal-close" data-close="logModalOverlay">✕</button></div>
+    <div class="log-body" id="logBody"></div>
+  </div>
+</div>
+
+<!-- 隐藏文件上传（+ 菜单用） -->
+<input type="file" id="chatFileInput" multiple class="hidden">
+<div class="toast hidden" id="toast"></div>
+
+<!-- 【需求点 三、2】生态位补位非阻断轻提示（可关闭，不阻塞操作） -->
+<div class="eco-notice hidden" id="ecoNotice">
+  <div class="eco-icon">🔁</div>
+  <div class="eco-body">
+    <b class="eco-title">模型生态位补位</b>
+    <span class="eco-text" id="ecoNoticeText"></span>
+    <span class="eco-detail" id="ecoNoticeDetail"></span>
+  </div>
+  <button class="eco-close" id="ecoNoticeClose">✕</button>
+</div>
+
+<script src="/static/app.js?v=1.7"></script>
+</body>
+</html>

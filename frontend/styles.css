@@ -1,0 +1,1232 @@
+/* ==========================================================================
+   Multi-Agent Ecosystem · 裸机版 —— DeepSeek 深色毛玻璃 IDE 风格
+   架构文档来源：第7章 前端UI完整规范（7.1 侧边栏 / 7.2 主区域 / 7.3 对话页面 / 7.4 首次启动向导）
+   基础变量与组件样式沿用前端参考代码视觉基线，按文档规范补齐向导/状态栏等模块。
+   ========================================================================== */
+* { margin:0; padding:0; box-sizing:border-box; }
+:root{
+  --accent:#6d83f2;
+  --accent-2:#8b6df2;
+  --accent-soft:rgba(109,131,242,0.16);
+  --panel:rgba(28,32,42,0.55);
+  --panel-solid:rgba(22,25,33,0.92);
+  --border:rgba(255,255,255,0.08);
+  --border-strong:rgba(255,255,255,0.16);
+  --text:#e7e9f1;
+  --text-dim:#9aa1b3;
+  --text-faint:#666c7d;
+  --success:#4cd08a;
+  --danger:#f2555a;
+  --warning:#f2b84c;
+  /* ==========================================================================
+     【需求点 一、Bug1 图层层级】全局 z-index 分层表（集中管理，避免层级互踩）
+       - 主内容区普通容器：auto（不参与层叠竞争）
+       - 工作区下拉组件 / 其菜单：99999（页面最高图层，永远在最上层）
+       - 弹窗遮罩：10000；生态位补位轻提示：12000；Toast：13000
+     说明：数值刻意留出巨大间隔，后续新增组件不会再与下拉菜单冲突。
+     ========================================================================== */
+  --z-content:1;
+  --z-popover:500;
+  --z-topbar:900;
+  --z-ws-picker:99999;      /* 工作区选择下拉按钮 + 菜单：最高图层 */
+  --z-ws-menu:99999;
+  /* 【需求点 二、1 计时器图层】左上角任务计时器：与工作区下拉同级最高图层族，
+     位于下拉按钮右侧，既不遮挡下拉组件，也不会被内容区/任务面板盖住 */
+  --z-timer:99999;
+  --z-modal:10000;
+  --z-eco-notice:12000;
+  --z-toast:13000;
+  /* 【增量修复】自定义 Tooltip 浮层：必须高于所有既有图层（最高优先级） */
+  --z-tooltip:100000;
+}
+
+/* ==========================================================================
+   【需求点 Bug3 · 全量重建】统一 Tooltip（唯一一套）
+     · 全项目只保留 data-tip + 唯一浮层 #maeTip（已无任何 title 属性），
+       因此不可能再出现"一个元素两个 tooltip"。
+     · 背景色适配当前网页背景：#maeTip 底色 = var(--tip-bg)，
+       由 app.js 的 applyTipTheme() 依据用户选定的背景实时计算并注入
+       （预设背景取同色系调色板；自定义图片取图像平均色并压暗到白字可读区间）。
+     · 字体恒为白色（#fff）。
+     · 浮层是 body 末尾的单一 fixed 节点，不参与布局，不影响既有组件。
+   ========================================================================== */
+#maeTip{
+  position:fixed; z-index:var(--z-tooltip); max-width:340px;
+  padding:7px 11px; border-radius:8px;
+  background:var(--tip-bg,rgba(18,20,28,0.94));
+  color:#fff;                        /* 需求指定：白色字体 */
+  border:1px solid var(--tip-border,rgba(255,255,255,0.22));
+  box-shadow:0 8px 24px rgba(0,0,0,0.55);
+  font-size:12px; line-height:1.55; font-weight:400;
+  white-space:pre-line; word-break:break-word;
+  pointer-events:none; opacity:0; transform:translateY(-3px);
+  transition:opacity .12s ease, transform .12s ease, background .2s ease;
+}
+#maeTip.show{ opacity:1; transform:translateY(0); }
+#maeTip::after{
+  content:''; position:absolute; left:14px; width:8px; height:8px;
+  background:var(--tip-bg,rgba(18,20,28,0.94));
+  border-left:1px solid var(--tip-border,rgba(255,255,255,0.22));
+  border-top:1px solid var(--tip-border,rgba(255,255,255,0.22));
+  transform:rotate(45deg);
+}
+#maeTip[data-placement="bottom"]::after{ top:-5px; }
+#maeTip[data-placement="top"]::after{ bottom:-5px; transform:rotate(225deg); }
+
+html,body{ height:100%; }
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  color:var(--text);
+  background-size:cover;
+  background-position:center;
+  background-attachment:fixed;
+  overflow:hidden;
+  transition:background .3s ease;
+}
+button{ font:inherit; color:inherit; background:none; border:none; cursor:pointer; }
+input, textarea, select{ font:inherit; color:inherit; outline:none; }
+ul{ list-style:none; }
+.hidden{ display:none !important; }
+
+/* ---------- 预设背景 ---------- */
+body.bg-night{ background-image: radial-gradient(circle at 25% 15%, #333a58 0%, #181c2c 45%, #0a0b12 100%); }
+body.bg-black{ background-image: linear-gradient(#050506,#050506); }
+body.bg-stars{
+  background-image:
+    radial-gradient(1.5px 1.5px at 10% 20%, #fff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 80% 10%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 50% 60%, #fff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 30% 80%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 70% 70%, #fff 50%, transparent 51%),
+    linear-gradient(#03040c 0%, #0c1130 55%, #1c2350 100%);
+}
+.bg-thumb.bg-night{ background-image: radial-gradient(circle at 25% 15%, #333a58 0%, #181c2c 45%, #0a0b12 100%); }
+.bg-thumb.bg-black{ background: #050506; }
+.bg-thumb.bg-stars{
+  background-image:
+    radial-gradient(1.5px 1.5px at 15% 25%, #fff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 75% 15%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 45% 65%, #fff 50%, transparent 51%),
+    linear-gradient(#03040c 0%, #0c1130 55%, #1c2350 100%);
+}
+
+/* ---------- 毛玻璃通用面板 ---------- */
+.glass{
+  background:var(--panel);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border:1px solid var(--border);
+  border-radius:12px;
+}
+
+::-webkit-scrollbar{ width:6px; height:6px; }
+::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.15); border-radius:3px; }
+::-webkit-scrollbar-thumb:hover{ background:rgba(255,255,255,0.25); }
+::-webkit-scrollbar-track{ background:transparent; }
+
+/* ========================= 应用整体布局 ========================= */
+.app{ display:flex; height:100vh; width:100vw; overflow:hidden; }
+
+/* ---------- 侧边栏（固定 280px） ---------- */
+.sidebar{
+  width:280px; flex-shrink:0; height:100vh;
+  display:flex; flex-direction:column;
+  padding:16px 12px;
+  background:rgba(16,18,25,0.55);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border-right:1px solid var(--border);
+}
+.brand{ display:flex; align-items:center; gap:8px; padding:0 4px 14px; }
+.brand-icon{ font-size:18px; color:var(--accent); }
+.brand-name{ font-size:14px; font-weight:700; letter-spacing:.2px; }
+.new-session-btn{
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  width:100%; padding:9px 0; margin-bottom:14px;
+  background:var(--accent-soft); border:1px solid rgba(109,131,242,0.35);
+  border-radius:10px; font-size:13px; font-weight:600; color:var(--accent);
+  transition:background .2s ease;
+}
+.new-session-btn:hover{ background:rgba(109,131,242,0.26); }
+.sb-divider{ height:1px; background:var(--border); margin-bottom:12px; }
+
+.search-row{ display:flex; align-items:center; gap:6px; margin-bottom:14px; }
+.search-box{
+  flex:1; display:flex; align-items:center; gap:6px;
+  background:rgba(255,255,255,0.05); border:1px solid var(--border);
+  border-radius:9px; padding:7px 10px;
+}
+.search-box input{ flex:1; background:none; border:none; font-size:12.5px; }
+.search-box input::placeholder{ color:var(--text-faint); }
+.icon-btn{
+  width:30px; height:30px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  border-radius:8px; color:var(--text-dim); border:1px solid transparent; font-size:13px;
+  transition:background .2s ease;
+}
+.icon-btn:hover{ background:rgba(255,255,255,0.06); color:var(--text); }
+
+.group-label{ font-size:11px; color:var(--text-faint); padding:4px 8px 8px; letter-spacing:.5px; }
+.session-scroll{ flex:1; min-height:0; overflow-y:auto; }
+.session-item{
+  display:flex; align-items:center; gap:8px; padding:9px 10px; margin-bottom:3px;
+  border-radius:9px; cursor:pointer; position:relative;
+  border-left:2px solid transparent; transition:background .2s ease;
+}
+.session-item:hover{ background:rgba(255,255,255,0.05); }
+.session-item.active{ background:rgba(109,131,242,0.14); border-left:2px solid var(--accent); }
+.session-icon{ font-size:14px; flex-shrink:0; opacity:.85; }
+.session-title{
+  flex:1; min-width:0; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.session-time{ font-size:11px; color:var(--text-faint); flex-shrink:0; }
+
+/* ==========================================================================
+   【需求点 二、工作区分组】左树结构：工作区(折叠分组) -> 归属会话
+   ========================================================================== */
+.ws-toolbar{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:8px; margin-bottom:8px;
+}
+.ws-new-btn{
+  font-size:11.5px; padding:4px 10px; border-radius:8px; flex-shrink:0;
+  border:1px solid rgba(109,131,242,0.32); color:var(--accent); background:var(--accent-soft);
+  transition:background .2s ease;
+}
+.ws-new-btn:hover{ background:rgba(109,131,242,0.28); }
+
+.ws-group{ margin-bottom:6px; }
+.ws-group-head{
+  display:flex; align-items:center; gap:6px; padding:7px 8px;
+  border-radius:9px; cursor:pointer; transition:background .2s ease;
+  border-left:2px solid transparent;
+}
+.ws-group-head:hover{ background:rgba(255,255,255,0.05); }
+.ws-group.active > .ws-group-head{
+  background:rgba(109,131,242,0.12); border-left:2px solid var(--accent);
+}
+.ws-caret{
+  font-size:10.5px; color:var(--text-faint); width:12px; flex-shrink:0;
+  transition:transform .2s ease; text-align:center;
+}
+.ws-caret.collapsed{ transform:rotate(-90deg); }
+.ws-icon{ font-size:12.5px; flex-shrink:0; color:var(--accent); opacity:.9; }
+.ws-name{
+  flex:1; min-width:0; font-size:12.5px; font-weight:600;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.ws-count{
+  font-size:10px; color:var(--text-faint); background:rgba(255,255,255,0.06);
+  padding:1px 7px; border-radius:10px; flex-shrink:0;
+}
+.ws-ops{ display:flex; gap:2px; flex-shrink:0; opacity:0; transition:opacity .15s ease; }
+.ws-group-head:hover .ws-ops{ opacity:1; }
+.ws-op{
+  width:20px; height:20px; display:flex; align-items:center; justify-content:center;
+  border-radius:6px; color:var(--text-faint); font-size:11px;
+}
+.ws-op:hover{ background:rgba(255,255,255,0.1); color:var(--text); }
+.ws-op.danger:hover{ background:rgba(242,85,90,0.16); color:var(--danger); }
+
+.ws-sessions{
+  margin:2px 0 4px 10px; padding-left:12px;
+  border-left:1px dashed rgba(255,255,255,0.12);
+  max-height:1200px; overflow:hidden; transition:max-height .22s ease, opacity .18s ease; opacity:1;
+}
+.ws-sessions.collapsed{ max-height:0; opacity:0; }
+.ws-sessions .session-item{ padding:7px 9px; }
+.ws-sessions .session-title{ font-size:12.5px; }
+
+/* 空状态占位（【需求点 二、2】不得预生成任何会话条目） */
+.ws-empty{
+  padding:8px 10px; font-size:11.5px; color:var(--text-faint); line-height:1.6;
+}
+.ws-empty-global{
+  padding:22px 12px; text-align:center; font-size:12.5px; color:var(--text-faint); line-height:1.8;
+}
+.sb-empty{ font-size:11px; color:var(--text-faint); padding:4px 8px; }
+
+.ws-move-list{ display:flex; flex-direction:column; gap:6px; max-height:50vh; overflow-y:auto; }
+.ws-move-item{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:9px 12px; border-radius:9px; border:1px solid var(--border);
+  background:rgba(255,255,255,0.03); cursor:pointer; font-size:12.5px;
+  transition:background .2s ease;
+}
+.ws-move-item:hover{ background:rgba(109,131,242,0.12); }
+.ws-move-item.current{ opacity:.5; cursor:default; }
+.ws-move-item.current:hover{ background:rgba(255,255,255,0.03); }
+
+/* 顶部当前工作区标识 */
+.ws-chip{
+  font-size:11.5px; padding:4px 11px; border-radius:20px; font-weight:600;
+  background:var(--accent-soft); color:var(--accent); border:1px solid rgba(109,131,242,0.28);
+  max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+/* ==========================================================================
+   【需求点 一、Bug1】会话窗口左上角：工作区选择下拉按钮
+   图层修复要点：
+     1. .ws-picker 提升为 position:relative + z-index:99999（最高图层），
+        使下拉按钮与菜单永远盖在主内容区、任务面板、消息面板之上；
+     2. .ws-picker-menu 同步 z-index:99999 并显式声明层叠顺序，
+        弹出时不与下方主内容区域竞争层叠；
+     3. 父级容器（.main / .topbar / .content-area）一律 overflow:visible，
+        避免下拉菜单被截断（详见各容器样式中的注释）。
+   ========================================================================== */
+.ws-picker{
+  position:relative;                 /* 建立定位基准，并使其可参与 z-index 竞争 */
+  z-index:var(--z-ws-picker);        /* 页面最高图层 */
+  flex-shrink:0;
+  isolation:auto;                    /* 不建立隔离层，保证子菜单能盖住外部容器 */
+}
+.ws-picker-btn{
+  display:flex; align-items:center; gap:7px; max-width:280px;
+  padding:7px 12px; border-radius:10px; font-size:13px; font-weight:600;
+  background:var(--accent-soft); border:1px solid rgba(109,131,242,0.32);
+  color:var(--accent); transition:background .2s ease;
+}
+.ws-picker-btn:hover{ background:rgba(109,131,242,0.26); }
+.ws-picker-icon{ font-size:13.5px; }
+.ws-picker-name{
+  max-width:210px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.ws-picker-caret{ font-size:10.5px; opacity:.8; }
+.ws-picker-menu{
+  /* 【Bug1】使用 position:fixed + 最高 z-index：
+     fixed 定位脱离所有祖先容器的裁剪（.app 的 overflow:hidden、滚动容器等），
+     因此下拉菜单既不会被会话框遮挡，也不会被主内容区截断。
+     具体的 top/left 由 JS 依据按钮位置计算（见 app.js: positionWsPickerMenu）。 */
+  position:fixed;
+  z-index:var(--z-ws-menu);          /* 【Bug1】页面最高图层 */
+  width:320px; max-height:60vh; overflow-y:auto; overflow-x:hidden; padding:7px;
+  /* 不透明底色 + 阴影：即使下层是消息面板也能清晰阅读 */
+  background:rgba(24,27,36,0.98);
+  box-shadow:0 16px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06);
+  clip-path:none;
+}
+.ws-picker-title{
+  font-size:10.5px; color:var(--text-faint); letter-spacing:.5px;
+  padding:6px 9px 7px;
+}
+.ws-picker-item{
+  display:flex; align-items:center; gap:9px; padding:9px 10px;
+  border-radius:8px; cursor:pointer; font-size:12.5px;
+  transition:background .15s ease;
+}
+.ws-picker-item:hover{ background:rgba(255,255,255,0.07); }
+.ws-picker-item.active{ background:rgba(109,131,242,0.16); }
+.ws-picker-item .wpi-name{
+  flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.ws-picker-item .wpi-meta{ font-size:10.5px; color:var(--text-faint); flex-shrink:0; }
+.ws-picker-item .wpi-path{
+  display:block; font-size:10.5px; color:var(--text-faint); margin-top:2px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:250px;
+}
+.ws-picker-item .wpi-dot{
+  width:6px; height:6px; border-radius:50%; flex-shrink:0;
+  background:var(--success); box-shadow:0 0 5px rgba(76,208,138,.7);
+}
+.ws-picker-item .wpi-dot.missing{ background:var(--danger); box-shadow:none; }
+.ws-picker-sep{ height:1px; background:var(--border); margin:6px 4px; }
+.ws-picker-add{
+  display:flex; align-items:center; gap:8px; padding:10px;
+  border-radius:8px; cursor:pointer; font-size:12.5px; font-weight:600;
+  color:var(--accent); transition:background .15s ease;
+}
+.ws-picker-add:hover{ background:rgba(109,131,242,0.16); }
+.ws-picker-foot{
+  font-size:10.5px; color:var(--text-faint); padding:6px 9px 4px; line-height:1.6;
+  border-top:1px solid var(--border); margin-top:5px;
+}
+.folder-item{
+  display:flex; align-items:flex-start; gap:9px; padding:10px 12px;
+  border-radius:9px; border:1px solid var(--border); background:rgba(255,255,255,0.03);
+  cursor:pointer; font-size:12.5px; transition:background .2s ease; word-break:break-all;
+}
+.folder-item:hover{ background:rgba(109,131,242,0.12); }
+.folder-name{ flex:1; min-width:0; }
+
+/* ==========================================================================
+   【需求点 二、任务执行计时器】对话框左上角计时组件
+   位置：工作区下拉组件右侧（同一行，不重叠、不遮挡）；
+   层级：--z-timer = 99999（与工作区下拉同属最高图层族，高于 .topbar 与内容区）；
+   风格：与页面深色主题统一（复用 --panel/--border/--accent 等变量）。
+   ========================================================================== */
+.task-timer{
+  position:relative;                 /* 参与 z-index 竞争，确保处于最上层 */
+  z-index:var(--z-timer);
+  display:flex; align-items:center; gap:7px; flex-shrink:0;
+  margin-left:10px; padding:6px 12px; border-radius:10px;
+  font-size:12.5px; font-weight:600; letter-spacing:.2px;
+  color:var(--text-dim);
+  background:rgba(22,25,33,0.72);
+  border:1px solid var(--border);
+  transition:color .2s ease, border-color .2s ease, background .2s ease;
+  user-select:none;
+}
+.task-timer .timer-icon{ font-size:12.5px; opacity:.85; }
+.task-timer .timer-main{
+  font-family:ui-monospace,Consolas,"Cascadia Mono",monospace;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.task-timer .timer-sub{
+  font-size:10.5px; font-weight:500; color:var(--text-faint);
+  padding-left:7px; margin-left:2px; border-left:1px solid var(--border);
+  max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+/* ---- 状态色：待机 / 计时中 / 暂停 / 已完成 / 失败 / 已取消 ---- */
+.task-timer[data-state="idle"]{ color:var(--text-faint); }
+.task-timer[data-state="running"]{
+  color:var(--accent); border-color:rgba(109,131,242,0.42);
+  background:rgba(109,131,242,0.14);
+}
+.task-timer[data-state="running"] .timer-icon{ animation:timerPulse 1.6s ease-in-out infinite; }
+.task-timer[data-state="paused"]{
+  color:var(--warning); border-color:rgba(242,184,76,0.4);
+  background:rgba(242,184,76,0.12);
+}
+.task-timer[data-state="success"]{
+  color:var(--success); border-color:rgba(76,208,138,0.34);
+  background:rgba(76,208,138,0.1);
+}
+.task-timer[data-state="failed"]{
+  color:var(--danger); border-color:rgba(242,85,90,0.36);
+  background:rgba(242,85,90,0.1);
+}
+.task-timer[data-state="cancelled"]{
+  color:var(--text-dim); border-color:var(--border-strong);
+  background:rgba(255,255,255,0.05);
+}
+@keyframes timerPulse{
+  0%,100%{ opacity:.55; transform:scale(1); }
+  50%    { opacity:1;   transform:scale(1.12); }
+}
+
+/* 【需求点 二、2-c】任务执行中的终止按钮（取消后计时同时停止） */
+.task-cancel-btn{
+  font-size:11px; padding:4px 11px; border-radius:20px; font-weight:600;
+  color:var(--danger); background:rgba(242,85,90,0.14);
+  border:1px solid rgba(242,85,90,0.34);
+  transition:background .2s ease;
+}
+.task-cancel-btn:hover{ background:rgba(242,85,90,0.26); }
+.task-cancel-btn:disabled{ opacity:.5; cursor:not-allowed; }
+
+/* 当前文件操作根目录提示（越权边界即时可见） */
+.root-chip{
+  font-size:11px; padding:4px 10px; border-radius:20px; font-weight:600;
+  background:rgba(76,208,138,0.13); color:var(--success);
+  border:1px solid rgba(76,208,138,0.28);
+  max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font-family:ui-monospace,Consolas,monospace;
+}
+.root-chip.system{
+  background:rgba(255,255,255,0.06); color:var(--text-dim);
+  border-color:var(--border);
+}
+
+/* ==========================================================================
+   【需求点 二、1】欢迎首页（未选中会话时展示，延续深色毛玻璃风格）
+   ========================================================================== */
+.welcome{
+  flex:1; min-height:0; overflow-y:auto;
+  display:flex; align-items:center; justify-content:center; padding:28px;
+}
+.welcome-inner{ width:min(760px, 100%); text-align:center; }
+.welcome-brand{
+  font-size:13px; color:var(--accent); font-weight:700; letter-spacing:.5px; margin-bottom:16px;
+}
+.welcome-icon{ font-size:15px; margin-right:4px; }
+.welcome-title{ font-size:26px; font-weight:700; margin-bottom:10px; letter-spacing:.3px; }
+.welcome-sub{ font-size:13px; color:var(--text-dim); margin-bottom:24px; line-height:1.8; }
+.welcome-sub b{ color:var(--accent); }
+.welcome-hint{ color:var(--text-faint); }
+.welcome-input{
+  padding:16px 16px 12px; text-align:left;
+  border-radius:16px; background:rgba(28,32,42,0.62);
+}
+.welcome-input textarea{
+  width:100%; resize:none; background:none; border:none; font-size:14px; line-height:1.7;
+  min-height:66px; max-height:200px;
+}
+.welcome-input textarea::placeholder{ color:var(--text-faint); }
+.welcome-actions{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  margin-top:10px; padding-top:10px; border-top:1px solid var(--border);
+}
+.welcome-tip{ font-size:11px; color:var(--text-faint); }
+.welcome-cards{
+  display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-top:22px; text-align:left;
+}
+.wc-item{
+  padding:13px 14px; border-radius:12px; background:rgba(255,255,255,0.03);
+  border:1px solid var(--border); font-size:11.5px; line-height:1.7;
+}
+.wc-item span{ font-size:15px; display:block; margin-bottom:5px; }
+.wc-item b{ display:block; font-size:12.5px; color:var(--text); margin-bottom:3px; }
+.wc-item i{ color:var(--text-faint); font-style:normal; }
+
+.chat-view{ flex:1; min-height:0; display:flex; flex-direction:column; gap:12px; }
+
+/* ==========================================================================
+   【需求点 Bug1】常驻错误提示条（不自动消失，修改输入后清除）
+   ========================================================================== */
+.alert-banner{
+  display:flex; align-items:flex-start; gap:10px;
+  padding:11px 13px; border-radius:10px; margin-bottom:14px;
+  font-size:12px; line-height:1.75; white-space:pre-wrap; word-break:break-word;
+  border:1px solid rgba(242,85,90,0.35); background:rgba(242,85,90,0.10); color:#ffd9db;
+}
+.alert-banner.warn{ border-color:rgba(242,184,76,0.35); background:rgba(242,184,76,0.10); color:#ffe6bb; }
+.alert-banner.ok{ border-color:rgba(76,208,138,0.32); background:rgba(76,208,138,0.10); color:#c7f3dc; }
+.alert-banner .ab-icon{ flex-shrink:0; font-size:13px; line-height:1.5; }
+.alert-banner .ab-content{ flex:1; min-width:0; }
+.alert-banner .ab-title{ font-weight:700; display:block; margin-bottom:3px; font-size:12.5px; }
+.alert-banner .ab-msg{ display:block; }
+.alert-banner .ab-hint{ display:block; margin-top:5px; opacity:.85; font-size:11.5px; }
+.alert-banner .ab-raw{
+  display:block; margin-top:6px; padding:7px 9px; border-radius:7px;
+  background:rgba(0,0,0,0.28); font-family:ui-monospace,Consolas,monospace;
+  font-size:11px; max-height:150px; overflow:auto; white-space:pre-wrap;
+}
+.alert-banner .ab-close{ flex-shrink:0; color:inherit; opacity:.7; font-size:13px; }
+.alert-banner .ab-close:hover{ opacity:1; }
+
+/* 结果常驻展示（连通性测试 / 保存结果） */
+.test-result{
+  font-size:11.5px; width:100%; margin-top:2px; line-height:1.75;
+  white-space:pre-wrap; word-break:break-word;
+}
+.test-result.ok{ color:var(--success); }
+.test-result.bad{ color:var(--danger); }
+.test-result .tr-title{ font-weight:700; display:block; }
+.test-result .tr-hint{ display:block; opacity:.85; margin-top:3px; }
+.test-result .tr-raw{
+  display:block; margin-top:6px; padding:7px 9px; border-radius:7px;
+  background:rgba(0,0,0,0.28); font-family:ui-monospace,Consolas,monospace;
+  font-size:11px; max-height:140px; overflow:auto; white-space:pre-wrap;
+}
+
+/* ==========================================================================
+   【需求点 三、4】生态位自动补位开关
+   ========================================================================== */
+.fallback-switch{
+  border:1px solid rgba(109,131,242,0.25); background:rgba(109,131,242,0.07);
+  border-radius:11px; padding:12px 13px; margin-bottom:14px;
+}
+.fs-main{ display:flex; align-items:center; gap:12px; }
+.fs-toggle{ position:relative; display:inline-block; width:42px; height:23px; flex-shrink:0; }
+.fs-toggle input{ opacity:0; width:0; height:0; }
+.fs-slider{
+  position:absolute; cursor:pointer; inset:0; background:rgba(255,255,255,0.15);
+  border-radius:23px; transition:background .2s ease;
+}
+.fs-slider::before{
+  content:""; position:absolute; height:17px; width:17px; left:3px; top:3px;
+  background:#fff; border-radius:50%; transition:transform .2s ease;
+}
+.fs-toggle input:checked + .fs-slider{ background:var(--accent); }
+.fs-toggle input:checked + .fs-slider::before{ transform:translateX(19px); }
+.fs-text{ min-width:0; }
+.fs-text b{ display:block; font-size:12.5px; margin-bottom:3px; }
+.fs-text span{ font-size:11px; color:var(--text-dim); line-height:1.7; }
+.fs-note{ font-size:11px; color:var(--text-faint); margin-top:8px; line-height:1.7; }
+
+/* ==========================================================================
+   【需求点 三、2】生态位补位非阻断轻提示（右下角浮层，不阻塞操作）
+   ========================================================================== */
+.eco-notice{
+  position:fixed; right:22px; bottom:104px; z-index:var(--z-eco-notice);
+  display:flex; align-items:flex-start; gap:11px; width:min(420px, 82vw);
+  padding:13px 14px; border-radius:13px;
+  background:rgba(28,32,42,0.94);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border:1px solid rgba(242,184,76,0.4);
+  box-shadow:0 10px 32px rgba(0,0,0,0.42);
+  animation:ecoIn .22s ease;
+}
+@keyframes ecoIn{ from{ opacity:0; transform:translateY(10px); } to{ opacity:1; transform:translateY(0); } }
+.eco-notice .eco-icon{ font-size:16px; flex-shrink:0; line-height:1.3; }
+.eco-notice .eco-body{ flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
+.eco-notice .eco-title{ font-size:12.5px; color:var(--warning); }
+.eco-notice .eco-text{
+  font-size:12.5px; color:var(--text); line-height:1.7; word-break:break-word;
+}
+.eco-notice .eco-detail{
+  font-size:11px; color:var(--text-faint); line-height:1.7; word-break:break-word;
+}
+.eco-notice .eco-close{ flex-shrink:0; color:var(--text-faint); font-size:13px; }
+.eco-notice .eco-close:hover{ color:var(--text); }
+
+/* 状态栏内在运行模型标识 */
+.model-actual{ color:var(--text-dim); }
+.model-actual b{ color:var(--accent); }
+.model-actual.fallback b{ color:var(--warning); }
+
+
+.sb-sysinfo{
+  font-size:10.5px; color:var(--text-faint); line-height:1.6;
+  padding:8px 8px 4px; border-top:1px solid var(--border); margin-top:8px;
+  max-height:210px; overflow-y:auto;
+}
+.sb-sysinfo b{ color:var(--text-dim); font-weight:600; }
+
+.sb-footer{ display:flex; gap:8px; padding-top:12px; border-top:1px solid var(--border); }
+.footer-btn{
+  flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
+  padding:9px 0; border-radius:9px; font-size:12.5px; color:var(--text-dim);
+  background:rgba(255,255,255,0.04); border:1px solid var(--border);
+  transition:background .2s ease, color .2s ease;
+}
+.footer-btn:hover{ background:rgba(255,255,255,0.08); color:var(--text); }
+
+/* ---------- 主内容区 ---------- */
+/* 【需求点 一、Bug1】.main 必须 overflow:visible，否则左上角下拉菜单会被本容器裁切 */
+.main{
+  flex:1; min-width:0; height:100vh; display:flex; flex-direction:column; gap:12px; padding:16px;
+  overflow:visible;                 /* 【Bug1】不裁切子级绝对定位下拉菜单 */
+  position:relative;
+}
+
+/* 【需求点 一、Bug1】顶栏承载工作区下拉按钮：不能建立会困住菜单的层叠上下文
+   （不加 overflow:hidden / 不加 isolation / 不加 position+z-index），
+   使 .ws-picker 的 z-index 直接在当前层叠上下文中生效，稳居最上层。 */
+.topbar{
+  flex-shrink:0; height:48px; display:flex; align-items:center; justify-content:space-between;
+  padding:0 18px;
+  overflow:visible;                 /* 【Bug1】允许下拉菜单溢出顶栏显示 */
+  z-index:var(--z-topbar);          /* 【Bug1】顶栏整体高于主内容区，但低于下拉菜单本身 */
+}
+.tabs{ position:relative; display:flex; gap:26px; height:100%; align-items:center; }
+.tab-btn{ font-size:14px; color:var(--text-dim); padding:6px 2px; position:relative; transition:color .2s ease; }
+.tab-btn.active{ color:var(--text); font-weight:600; }
+.tab-indicator{
+  position:absolute; bottom:-1px; height:2px; background:var(--accent); border-radius:2px;
+  transition:left .2s ease, width .2s ease;
+}
+.tab-dot{
+  position:absolute; top:2px; right:-8px; width:7px; height:7px; border-radius:50%;
+  background:var(--warning); box-shadow:0 0 6px rgba(242,184,76,.8);
+}
+.topbar-right{ display:flex; align-items:center; gap:10px; }
+.degrade-chip{
+  font-size:11.5px; padding:4px 10px; border-radius:20px; font-weight:600;
+  background:rgba(242,184,76,0.15); color:var(--warning); border:1px solid rgba(242,184,76,0.3);
+}
+.session-log-btn{
+  font-size:12.5px; color:var(--text-dim); display:flex; align-items:center; gap:4px;
+  padding:6px 12px; border-radius:8px; border:1px solid var(--border);
+  transition:background .2s ease;
+}
+.session-log-btn:hover{ background:rgba(255,255,255,0.06); color:var(--text); }
+
+/* 【需求点 一、Bug1】内容区同样不裁切、不建立高图层，保证下拉菜单始终在最上层 */
+.content-area{
+  flex:1; min-height:0; display:flex; flex-direction:column;
+  overflow:visible;
+  z-index:var(--z-content);         /* 低于顶栏与下拉菜单 */
+}
+.tab-content{ flex:1; min-height:0; display:flex; flex-direction:column; gap:12px; overflow:visible; }
+
+/* ---------- 顶部任务面板 ---------- */
+.task-panel{ flex-shrink:0; overflow:hidden; }
+.task-header{ display:flex; align-items:center; justify-content:space-between; padding:12px 16px; cursor:pointer; }
+.task-title-group{ display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; }
+.task-badge{ background:var(--accent-soft); color:var(--accent); font-size:11px; padding:1px 8px; border-radius:10px; font-weight:600; }
+.task-toggle{ font-size:13px; color:var(--text-dim); transition:transform .2s ease; }
+.task-toggle.collapsed{ transform:rotate(-90deg); }
+.task-list{ max-height:240px; overflow-y:auto; transition:max-height .25s ease, opacity .2s ease; opacity:1; }
+.task-list.collapsed{ max-height:0; opacity:0; }
+.task-item{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:9px 16px; border-top:1px solid var(--border); font-size:13px;
+}
+.task-item.clickable{ cursor:pointer; }
+.task-item.clickable:hover{ background:rgba(255,255,255,0.03); }
+/* 【需求点 Bug3】乐观任务行（用户刚发送、后端尚未落库）：
+   左侧高亮 + 淡入，让"任务已进入面板"在发送瞬间就可见 */
+.task-item.optimistic{
+  background:rgba(109,131,242,0.07);
+  border-left:2px solid var(--accent);
+  animation:taskRowIn .3s ease;
+}
+@keyframes taskRowIn{ from{ opacity:0; transform:translateY(-4px); } to{ opacity:1; transform:translateY(0); } }
+.task-name{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.task-sub{ font-size:11px; color:var(--text-faint); margin-left:8px; flex-shrink:0; }
+.task-status{ display:flex; align-items:center; gap:6px; font-size:11.5px; padding:3px 10px; border-radius:20px; flex-shrink:0; font-weight:600; }
+.task-status.pending{ background:rgba(255,255,255,0.06); color:var(--text-dim); }
+.task-status.running{ background:rgba(109,131,242,0.16); color:var(--accent); }
+.task-status.waiting_approval{ background:rgba(242,184,76,0.16); color:var(--warning); }
+.task-status.success{ background:rgba(76,208,138,0.15); color:var(--success); }
+.task-status.failed{ background:rgba(242,85,90,0.15); color:var(--danger); }
+.spinner{
+  width:10px; height:10px; border-radius:50%;
+  border:2px solid rgba(109,131,242,0.3); border-top-color:var(--accent);
+  animation:spin .8s linear infinite; display:inline-block;
+}
+@keyframes spin{ to{ transform:rotate(360deg); } }
+
+/* ---------- 消息区 ---------- */
+/* ==========================================================================
+   【需求点 二、Bug2 主会话框毛玻璃样式修改】
+   移除主会话区域容器的毛玻璃模糊与背景填充：
+     · 删除 backdrop-filter / -webkit-backdrop-filter（模糊）
+     · background 设为完全透明
+   保留原有圆角（border-radius）、边框（border）与阴影（box-shadow），
+   布局、输入框、消息面板功能与交互均不改动。
+   ========================================================================== */
+.messages{
+  flex:1; min-height:0; overflow-y:auto; padding:18px; display:flex; flex-direction:column;
+  /* 【Bug2】移除毛玻璃：不再做模糊与饱和处理 */
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+  /* 【Bug2】背景完全透明（保留边框、圆角、阴影） */
+  background:transparent;
+  border:1px solid var(--border);
+  border-radius:12px;
+  box-shadow:none;
+}
+.msg{ display:flex; margin-bottom:18px; }
+.msg.user{ justify-content:flex-end; }
+.msg.ai{ justify-content:flex-start; }
+.msg-bubble{ max-width:80%; font-size:14px; line-height:1.7; }
+.msg.user .msg-bubble{
+  background:rgba(90,120,255,0.22); border:1px solid rgba(120,140,255,0.32);
+  padding:11px 15px; border-radius:14px 14px 3px 14px; color:var(--text);
+}
+.msg.ai .msg-bubble{ width:82%; }
+.msg.ai .msg-card{
+  background:rgba(255,255,255,0.04); border:1px solid var(--border);
+  border-radius:14px 14px 14px 3px; padding:14px 16px;
+}
+.msg-time{ font-size:10.5px; color:var(--text-faint); margin-top:4px; text-align:right; }
+.msg.ai .msg-time{ text-align:left; }
+
+/* 思考链（可折叠 + 分步图标 + 连接线） */
+.thinking-block{ margin-bottom:12px; padding-bottom:10px; border-bottom:1px dashed var(--border); }
+.thinking-header{
+  display:flex; align-items:center; justify-content:space-between; cursor:pointer;
+  font-size:12.5px; color:var(--text-dim); font-weight:600; padding:2px 0 8px;
+}
+.thinking-header .chevron{ transition:transform .2s ease; font-size:12px; }
+.thinking-header .chevron.collapsed{ transform:rotate(-90deg); }
+.thinking-chain{
+  margin-left:9px; padding-left:20px; border-left:1px dashed rgba(255,255,255,0.16);
+  max-height:1200px; overflow:hidden; transition:max-height .25s ease, opacity .2s ease; opacity:1;
+}
+.thinking-chain.collapsed{ max-height:0; opacity:0; }
+.thinking-step{ position:relative; padding:5px 0 5px 4px; font-size:12.5px; color:var(--text-dim); line-height:1.6; }
+.thinking-step .step-icon{
+  position:absolute; left:-29px; top:5px; width:18px; height:18px;
+  display:flex; align-items:center; justify-content:center; font-size:10.5px;
+  background:var(--panel-solid); border:1px solid var(--border-strong); border-radius:50%;
+}
+.step-label{ color:var(--text); font-weight:600; }
+.step-agent{ font-size:10.5px; color:var(--accent); margin-left:6px; }
+
+/* ==========================================================================
+   【需求点 Bug2】流式协同思维链（运行中态）
+   仅在 .thinking-block.streaming 上追加修饰：静态历史思维链的视觉与折叠行为不变。
+     · 运行中不限制链路最大高度，避免长链路被 max-height 裁切
+     · 实时呼吸点 + 最新一步淡入，直观表达"还在继续输出"
+   注意用 :not(.collapsed) 选择器，保证用户手动折叠仍然生效
+   ========================================================================== */
+.thinking-block.streaming .thinking-chain:not(.collapsed){ max-height:none; }
+.thinking-block.streaming .thinking-header span:first-child::after{
+  content:' ●'; color:var(--success); font-size:9px; vertical-align:middle;
+  animation:chainLivePulse 1.2s ease-in-out infinite;
+}
+.thinking-block.streaming .thinking-step:last-child{ animation:chainStepIn .28s ease; }
+@keyframes chainLivePulse{ 0%,100%{ opacity:1; } 50%{ opacity:.25; } }
+@keyframes chainStepIn{ from{ opacity:0; transform:translateY(-3px); } to{ opacity:1; transform:translateY(0); } }
+
+/* ==========================================================================
+   【BUG-C 2/5】思考链错误标识（红色）
+     · 失败步骤：红色图标 + 红色「发生错误」标签 + 淡红底 + 左侧红边
+     · 标题汇总「含 N 处错误」，禁止用 success 状态掩盖失败
+     · 仅新增修饰类，既有静态/流式思维链的布局与折叠行为完全不变
+   ========================================================================== */
+.thinking-header .think-error-count{ color:var(--danger,#ff6b6b); font-weight:700; }
+.thinking-block.has-error{ border-bottom-color:rgba(255,107,107,0.42); }
+.thinking-step.step-error{
+  color:#ffb3b3;
+  background:rgba(255,80,80,0.09);
+  border-left:2px solid var(--danger,#ff6b6b);
+  border-radius:0 6px 6px 0;
+  padding-left:9px; margin:4px 0;
+}
+.thinking-step.step-error .step-label{ color:var(--danger,#ff6b6b); }
+.thinking-step.step-error .step-icon{
+  background:rgba(255,80,80,0.16); border-color:var(--danger,#ff6b6b);
+}
+
+/* 【BUG-C 2】失败任务标识 + 消息区错误条 */
+.task-item.task-failed .task-name{ color:#ffb3b3; }
+.task-fail-mark{ color:var(--danger,#ff6b6b); margin-right:4px; }
+.task-fail-reason{
+  flex-basis:100%; margin-top:4px; font-size:10.5px; line-height:1.5;
+  color:#ffb3b3; opacity:.9;
+}
+.msg.ai.msg-failed .msg-card{ border-color:rgba(255,107,107,0.5); }
+.task-error-bar{
+  margin-bottom:10px; padding:7px 11px; border-radius:8px; font-size:12.5px;
+  color:#ffd0d0; background:rgba(255,80,80,0.13);
+  border:1px solid rgba(255,107,107,0.45); line-height:1.55;
+}
+
+/* 【BUG-C 4】故障诊断卡片（调度规划Agent 输出：哪一步 Agent / 什么任务 / 失败原因） */
+.fault-report{
+  margin-bottom:12px; padding:11px 13px; border-radius:10px;
+  background:rgba(255,80,80,0.07); border:1px solid rgba(255,107,107,0.4);
+}
+.fault-title{ font-size:13px; font-weight:700; color:#ffb3b3; margin-bottom:8px; line-height:1.55; }
+.fault-row{
+  background:rgba(0,0,0,0.18); border:1px solid rgba(255,107,107,0.24);
+  border-radius:8px; padding:8px 10px; margin-bottom:7px;
+}
+.fault-row.blocked{ border-color:rgba(255,193,7,0.36); }
+.fault-head{ font-size:12.5px; color:var(--text); margin-bottom:4px; }
+.fault-badge{
+  display:inline-block; font-size:10px; font-weight:700; padding:1px 6px;
+  border-radius:5px; margin-right:6px; background:var(--danger,#ff6b6b); color:#fff;
+}
+.fault-badge.warn{ background:#c99a12; }
+.fault-line{ font-size:11.5px; color:var(--text-dim); line-height:1.6; }
+.fault-line.fault-reason{ color:#ffb3b3; }
+.fault-note{ font-size:11px; color:var(--text-faint); line-height:1.6; margin-top:2px; }
+
+.reply-body p{ margin:0 0 10px; }
+.reply-body p:last-child{ margin-bottom:0; }
+.reply-body h4{ font-size:14px; margin:14px 0 8px; color:var(--text); }
+.reply-body h4:first-child{ margin-top:0; }
+.reply-body ul{ margin:0 0 10px 18px; list-style:disc; }
+.reply-body li{ margin-bottom:5px; }
+.reply-body strong{ color:#fff; }
+.reply-body code{ background:rgba(255,255,255,0.08); padding:1px 5px; border-radius:4px; font-size:12.5px; }
+.reply-body pre{
+  background:rgba(0,0,0,0.35); border:1px solid var(--border); border-radius:9px;
+  padding:11px 13px; overflow-x:auto; margin:0 0 10px; font-size:12.5px;
+}
+.reply-body pre code{ background:none; padding:0; }
+.reply-body blockquote{
+  border-left:3px solid var(--accent); padding:4px 0 4px 12px; margin:0 0 10px;
+  color:var(--text-dim); font-size:13px;
+}
+
+.msg-actions{ display:flex; gap:6px; margin-top:10px; padding-top:8px; border-top:1px solid var(--border); }
+.msg-actions button{
+  width:26px; height:26px; display:flex; align-items:center; justify-content:center;
+  border-radius:7px; color:var(--text-faint); font-size:12.5px; transition:background .2s ease, color .2s ease;
+}
+.msg-actions button:hover{ background:rgba(255,255,255,0.07); color:var(--text); }
+
+.msg-system{
+  align-self:center; max-width:70%; text-align:center; font-size:12px; color:var(--text-faint);
+  background:rgba(255,255,255,0.04); border:1px solid var(--border);
+  border-radius:20px; padding:6px 16px; margin-bottom:14px; line-height:1.6;
+}
+.msg-system.warn{ color:var(--warning); border-color:rgba(242,184,76,0.3); background:rgba(242,184,76,0.08); }
+.msg-system.danger{ color:var(--danger); border-color:rgba(242,85,90,0.3); background:rgba(242,85,90,0.08); }
+
+/* 子任务结果块 */
+.subtask-card{
+  margin:0 0 10px; padding:10px 12px; border-radius:9px;
+  background:rgba(109,131,242,0.07); border:1px solid rgba(109,131,242,0.2); font-size:12.5px;
+}
+.subtask-card .sc-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+.subtask-card .sc-agent{ color:var(--accent); font-weight:600; }
+.subtask-card .sc-body{ color:var(--text-dim); white-space:pre-wrap; max-height:220px; overflow:auto; }
+
+/* ---------- 审批标签页 ---------- */
+.approval-toolbar{
+  flex-shrink:0; display:flex; align-items:center; justify-content:space-between;
+  padding:12px 16px;
+}
+.approval-desc{ font-size:12.5px; color:var(--text-dim); }
+.approval-actions{ display:flex; gap:8px; }
+.btn-ghost{
+  font-size:12px; padding:6px 12px; border-radius:8px; border:1px solid var(--border);
+  color:var(--text-dim); transition:background .2s ease, color .2s ease;
+}
+.btn-ghost:hover{ background:rgba(255,255,255,0.06); color:var(--text); }
+.btn-ghost.danger:hover{ background:rgba(242,85,90,0.14); color:var(--danger); border-color:rgba(242,85,90,0.3); }
+.approval-list{ flex:1; min-height:0; overflow-y:auto; padding:10px 14px; }
+.approval-item{
+  display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+  padding:12px 14px; border-radius:10px; background:rgba(255,255,255,0.03);
+  border:1px solid var(--border); margin-bottom:8px;
+}
+.approval-item.pending{ border-color:rgba(242,184,76,0.35); background:rgba(242,184,76,0.06); }
+.approval-left{ display:flex; flex-direction:column; gap:4px; min-width:0; flex:1; }
+.approval-type{ font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px; }
+.risk-tag{ font-size:10.5px; padding:1px 7px; border-radius:10px; font-weight:700; }
+.risk-tag.high{ background:rgba(242,85,90,0.18); color:var(--danger); }
+.risk-tag.mid{ background:rgba(242,184,76,0.18); color:var(--warning); }
+.risk-tag.low{ background:rgba(76,208,138,0.16); color:var(--success); }
+.approval-detail{ font-size:12px; color:var(--text-dim); white-space:pre-line; word-break:break-all; }
+.approval-params{
+  font-size:11.5px; color:var(--text-faint); background:rgba(0,0,0,0.25);
+  border-radius:7px; padding:6px 9px; font-family:ui-monospace,Consolas,monospace;
+  white-space:pre-wrap; word-break:break-all; max-height:120px; overflow:auto;
+}
+.approval-time{ font-size:11px; color:var(--text-faint); }
+.approval-right{ display:flex; flex-direction:column; align-items:flex-end; gap:8px; flex-shrink:0; }
+.approval-status{ font-size:11.5px; padding:4px 11px; border-radius:20px; font-weight:600; }
+.status-manual{ background:rgba(76,208,138,0.15); color:var(--success); }
+.status-auto{ background:rgba(109,131,242,0.15); color:var(--accent); }
+.status-rejected{ background:rgba(242,85,90,0.15); color:var(--danger); }
+.status-pending{ background:rgba(242,184,76,0.15); color:var(--warning); }
+.approval-empty{ text-align:center; color:var(--text-faint); font-size:13px; padding:70px 0; }
+.approval-btns{ display:flex; gap:6px; }
+.mini-btn{
+  font-size:11.5px; padding:4px 10px; border-radius:7px; border:1px solid var(--border-strong);
+  color:var(--text); transition:background .2s ease;
+}
+.mini-btn:hover{ background:rgba(255,255,255,0.08); }
+.mini-btn.confirm{ background:var(--accent); border-color:var(--accent); color:#fff; }
+.mini-btn.confirm:hover{ background:var(--accent-2); }
+.mini-btn.reject:hover{ background:rgba(242,85,90,0.16); color:var(--danger); border-color:rgba(242,85,90,0.35); }
+
+/* ---------- 【需求点 Bug8】高危审批内联卡片（消息区末尾，紧贴输入框上方） ----------
+   原「高危操作审批弹窗」已删除，审批内容改为消息流中的最后一项，不使用任何弹窗层。 */
+.inline-approval-wrap{ flex-shrink:0; width:100%; margin-top:2px; margin-bottom:6px; }
+.inline-approval-card{
+  width:100%; padding:13px 15px 14px; border-radius:12px;
+  background:rgba(242,184,76,0.07);
+  border:1px solid rgba(242,184,76,0.38);
+  border-left:3px solid var(--warning);
+  box-shadow:0 6px 18px rgba(0,0,0,0.22);
+}
+.inline-approval-card + .inline-approval-card{ margin-top:10px; }
+.inline-approval-card.decided{ border-color:var(--border); border-left-color:var(--border-strong); background:rgba(255,255,255,0.03); }
+.inline-approval-head{
+  display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:9px;
+}
+.inline-approval-title{ font-size:13.5px; font-weight:700; color:var(--warning); }
+.inline-approval-card.decided .inline-approval-title{ color:var(--text-dim); }
+.inline-approval-body{ display:flex; flex-direction:column; gap:5px; }
+.inline-approval-row{ display:flex; align-items:flex-start; gap:9px; font-size:12.5px; line-height:1.7; }
+.inline-approval-row .iar-label{
+  flex-shrink:0; width:66px; text-align:right; color:var(--text-faint); font-size:11.5px; padding-top:1px;
+}
+.inline-approval-row .iar-value{
+  flex:1; min-width:0; color:var(--text);
+  /* 【需求点 Bug8】完整展示，不截断：保留换行 + 长串强制换行 */
+  white-space:pre-wrap; word-break:break-all;
+}
+.inline-approval-row .iar-value.iar-desc{ color:var(--text-dim); }
+.inline-approval-row .iar-value.iar-desc.danger{ color:var(--warning); }
+.inline-approval-params-label{
+  margin:3px 0 0 75px; font-size:11.5px; color:var(--text-faint);
+}
+.inline-approval-params{
+  margin-left:75px; padding:8px 10px; border-radius:8px; max-height:200px; overflow:auto;  background:rgba(0,0,0,0.3); border:1px solid var(--border);
+  font-family:ui-monospace,Consolas,monospace; font-size:11.5px; color:var(--text-dim);
+  /* 【需求点 Bug8】原始命令 / 路径全量展示，允许滚动，绝不截断 */
+  white-space:pre-wrap; word-break:break-all;
+}
+.inline-approval-note{
+  margin-top:9px; font-size:11px; color:var(--text-faint); line-height:1.6;
+  padding-top:8px; border-top:1px dashed var(--border);
+}
+.inline-approval-error{
+  margin-top:9px; padding:8px 10px; border-radius:8px; font-size:12px; line-height:1.7;
+  color:var(--danger); background:rgba(242,85,90,0.12); border:1px solid rgba(242,85,90,0.35);
+  white-space:pre-wrap; word-break:break-all;
+}
+.inline-approval-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:11px; }
+/* 【新增】30 秒审批超时倒计时（前端只做展示，超时判定与裁决始终在后端） */
+.inline-approval-countdown{
+  margin-top:10px; padding:7px 10px; border-radius:8px; font-size:12px; font-weight:600;
+  color:var(--warn, #e6a23c); background:rgba(230,162,60,0.12);
+  border:1px solid rgba(230,162,60,0.35);
+}
+.inline-approval-countdown.expired{
+  color:var(--danger); background:rgba(242,85,90,0.12); border-color:rgba(242,85,90,0.35);
+}
+/* 【第三轮·Bug1】等待用户点击阶段：无超时限制（中性提示，不用警示色） */
+.inline-approval-countdown.idle{
+  color:var(--text-dim); background:rgba(255,255,255,0.05);
+  border-color:var(--border); font-weight:500;
+}
+.inline-approval-btn{
+  padding:8px 20px; border-radius:8px; font-size:13px; font-weight:600;
+  border:1px solid var(--border-strong); color:var(--text-dim);
+  transition:background .2s ease, color .2s ease, border-color .2s ease;
+}
+/* 次要 + 危险描边：拒绝 */
+.inline-approval-btn.reject{ background:transparent; color:var(--text-dim); border-color:rgba(242,85,90,0.45); }
+.inline-approval-btn.reject:hover{ background:rgba(242,85,90,0.16); color:var(--danger); border-color:rgba(242,85,90,0.6); }
+/* 主按钮：执行一次 */
+.inline-approval-btn.confirm{ background:var(--accent); border-color:var(--accent); color:#fff; }
+.inline-approval-btn.confirm:hover{ background:var(--accent-2); border-color:var(--accent-2); }
+.inline-approval-btn:disabled{ opacity:.6; cursor:not-allowed; }
+.inline-approval-btn.reject:disabled:hover{ background:transparent; }
+.inline-approval-decided{
+  margin-top:11px; padding:8px 12px; border-radius:8px; font-size:12.5px; font-weight:600;
+  text-align:right; white-space:pre-wrap; word-break:break-all;
+}
+.inline-approval-decided.manual{ color:var(--success); background:rgba(76,208,138,0.12); }
+.inline-approval-decided.auto{ color:var(--accent); background:rgba(109,131,242,0.12); }
+.inline-approval-decided.rejected{ color:var(--danger); background:rgba(242,85,90,0.12); }
+
+/* ---------- 输入区 ---------- */
+/* 【需求点 二、Bug2】输入区属主会话区域容器的一部分：同步移除毛玻璃与背景填充，
+   保留边框、圆角与阴影；输入框、附件条、状态栏的功能与布局完全不变。 */
+.input-area{
+  flex-shrink:0; padding:12px 14px 10px;
+  backdrop-filter:none;             /* 【Bug2】移除模糊 */
+  -webkit-backdrop-filter:none;
+  background:transparent;           /* 【Bug2】背景完全透明 */
+  border:1px solid var(--border);   /* 保留边框 */
+  border-radius:12px;               /* 保留圆角 */
+  box-shadow:none;                  /* 保留原有阴影风格（原本无阴影，保持不引入） */
+}
+.attach-strip{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:9px; }
+
+/* ==========================================================================
+   【需求点 Bug2 边界约束1】待审批阻塞提示条（输入框上方）
+     任务处于 waiting_approval 时显示，提示"存在待审批任务，请先完成审批"，
+     同时当前输入框临时禁用（普通提交被拦截，避免新旧任务互相干扰）。
+   ========================================================================== */
+.approval-block-banner{
+  display:flex; align-items:center; gap:8px;
+  margin-bottom:9px; padding:7px 12px; border-radius:9px;
+  font-size:12.5px; line-height:1.5;
+  color:#ffe6b8;
+  background:rgba(242,184,76,0.14);
+  border:1px solid rgba(242,184,76,0.42);
+}
+.approval-block-banner .abb-icon{ font-size:13px; }
+#chatInput.input-blocked{ opacity:.55; cursor:not-allowed; }
+#chatInput.input-blocked::placeholder{ color:rgba(242,184,76,.85); }
+.attach-chip{
+  display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-dim);
+  background:rgba(255,255,255,0.05); border:1px solid var(--border);
+  border-radius:20px; padding:3px 10px;
+}
+.attach-chip button{ color:var(--text-faint); font-size:12px; }
+.attach-chip button:hover{ color:var(--danger); }
+.input-row{ display:flex; align-items:flex-end; gap:10px; }
+.plus-wrap{ position:relative; flex-shrink:0; }
+.plus-btn{
+  width:32px; height:32px; border-radius:50%; background:rgba(255,255,255,0.06);
+  border:1px solid var(--border-strong); display:flex; align-items:center; justify-content:center;
+  font-size:16px; color:var(--text-dim); transition:background .2s ease;
+}
+.plus-btn:hover{ background:rgba(255,255,255,0.12); color:var(--text); }
+/* 【需求点 一、Bug1】输入区"＋"菜单同步使用分层表中的弹出层级别 */
+.popover{
+  position:absolute; bottom:calc(100% + 8px); left:0; width:170px;
+  display:flex; flex-direction:column; padding:6px; z-index:var(--z-popover);
+}
+.popover button{ text-align:left; padding:8px 10px; border-radius:8px; font-size:12.5px; transition:background .2s ease; }
+.popover button:hover{ background:rgba(255,255,255,0.08); }
+#chatInput{
+  flex:1; resize:none; background:none; border:none; font-size:13.5px;
+  max-height:120px; min-height:22px; line-height:1.5; padding:5px 0;
+}
+#chatInput::placeholder{ color:var(--text-faint); }
+.model-select{
+  flex-shrink:0; background:rgba(255,255,255,0.05); border:1px solid var(--border);
+  border-radius:8px; padding:6px 8px; font-size:12px; color:var(--text-dim);
+}
+.model-select option{ background:#16191f; color:var(--text); }
+.send-btn{
+  width:32px; height:32px; border-radius:50%; background:var(--accent); color:#fff;
+  display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0;
+  transition:background .2s ease, transform .1s ease;
+}
+.send-btn:hover{ background:var(--accent-2); }
+.send-btn:active{ transform:scale(.92); }
+.send-btn:disabled{ background:rgba(255,255,255,0.12); color:var(--text-faint); cursor:not-allowed; }
+
+.status-bar{
+  display:flex; justify-content:space-between; align-items:center;
+  margin-top:8px; padding-top:8px; border-top:1px solid var(--border);
+  font-size:11px; color:var(--text-faint); flex-wrap:wrap; gap:6px;
+}
+.status-bar span.sep{ opacity:.45; margin:0 2px; }
+
+/* ---------- 弹窗 ---------- */
+/* 【需求点 一、Bug1】遮罩统一使用分层表变量（低于工作区下拉菜单，避免相互争抢） */
+.modal-overlay{
+  position:fixed; inset:0; background:rgba(0,0,0,0.55);
+  display:flex; align-items:center; justify-content:center; z-index:var(--z-modal);
+}
+.modal{ width:440px; max-width:90vw; max-height:82vh; overflow-y:auto; padding:22px; }
+.modal.wide{ width:560px; }
+.modal-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+.modal-header h3{ font-size:15.5px; font-weight:700; }
+.modal-close{ font-size:15px; color:var(--text-dim); }
+.modal-close:hover{ color:var(--text); }
+
+.bg-options{ display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
+.bg-option{ cursor:pointer; text-align:center; }
+.bg-thumb{
+  width:100%; height:78px; border-radius:10px; border:2px solid transparent;
+  margin-bottom:6px; background-size:cover; background-position:center; transition:border-color .2s ease;
+}
+.bg-option span{ font-size:12px; color:var(--text-dim); }
+.bg-option.selected .bg-thumb{ border-color:var(--accent); }
+.upload-thumb{
+  display:flex; align-items:center; justify-content:center; font-size:22px; color:var(--text-dim);
+  background:rgba(255,255,255,0.04); border:1px dashed var(--border-strong);
+}
+
+.api-key-row{ display:flex; align-items:center; gap:8px; margin-bottom:11px; flex-wrap:wrap; }
+.api-key-row label{ width:118px; flex-shrink:0; font-size:12.5px; color:var(--text-dim); }
+.api-key-row input{
+  flex:1; min-width:0; background:rgba(255,255,255,0.05); border:1px solid var(--border);
+  border-radius:8px; padding:7px 10px; font-size:12.5px;
+}
+.api-key-row input:focus{ border-color:rgba(109,131,242,0.5); }
+.api-key-block{
+  border:1px solid var(--border); border-radius:10px; padding:12px;
+  margin-bottom:12px; background:rgba(255,255,255,0.02);
+}
+.api-key-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:9px; }
+.api-key-title{ font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px; }
+.key-state{ font-size:10.5px; padding:1px 8px; border-radius:10px; font-weight:600; }
+.key-state.ok{ background:rgba(76,208,138,0.15); color:var(--success); }
+.key-state.none{ background:rgba(255,255,255,0.07); color:var(--text-faint); }
+.key-state.bad{ background:rgba(242,85,90,0.15); color:var(--danger); }
+.agent-bind{
+  font-size:10.5px; color:var(--text-faint); line-height:1.7; margin-bottom:8px;
+  padding-bottom:8px; border-bottom:1px dashed var(--border);
+}
+.eye-btn{ width:28px; height:28px; flex-shrink:0; display:flex; align-items:center; justify-content:center; color:var(--text-dim); font-size:13px; border-radius:6px; }
+.eye-btn:hover{ background:rgba(255,255,255,0.07); }
+.test-btn{
+  font-size:11.5px; padding:6px 12px; border-radius:7px; flex-shrink:0;
+  border:1px solid rgba(109,131,242,0.35); color:var(--accent); background:var(--accent-soft);
+  transition:background .2s ease;
+}
+.test-btn:hover{ background:rgba(109,131,242,0.28); }
+.test-btn:disabled{ opacity:.55; cursor:progress; }
+.test-result{ font-size:11.5px; width:100%; margin-top:2px; line-height:1.6; }
+.test-result.ok{ color:var(--success); }
+.test-result.bad{ color:var(--danger); }
+.btn-primary{
+  width:100%; padding:10px 0; margin-top:6px; background:var(--accent); color:#fff;
+  border-radius:9px; font-size:13.5px; font-weight:600; transition:background .2s ease;
+}
+.btn-primary:hover{ background:var(--accent-2); }
+.btn-primary:disabled{ background:rgba(255,255,255,0.12); color:var(--text-faint); cursor:not-allowed; }
+.tip-text{ font-size:11px; color:var(--text-faint); text-align:center; margin-top:10px; line-height:1.6; }
+.sec-note{
+  font-size:11.5px; color:var(--text-dim); background:rgba(109,131,242,0.09);
+  border:1px solid rgba(109,131,242,0.22); border-radius:9px; padding:9px 11px; margin-bottom:14px;
+  line-height:1.6;
+}
+.sec-note b{ color:var(--accent); }
+
+/* 首次启动向导 */
+.wizard .wizard-step{
+  font-size:11px; padding:3px 10px; border-radius:10px; font-weight:600;
+  background:rgba(242,85,90,0.15); color:var(--danger);
+}
+.wizard-intro{ font-size:12.5px; color:var(--text-dim); line-height:1.7; margin-bottom:14px; }
+.wizard-intro b{ color:var(--text); }
+.wizard-actions{ margin-top:14px; }
+
+.danger-modal{ width:480px; }
+.danger-meta{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; font-size:11.5px; }
+.danger-meta span{
+  background:rgba(255,255,255,0.05); border:1px solid var(--border);
+  border-radius:20px; padding:3px 10px; color:var(--text-dim);
+}
+.danger-op{
+  font-size:13px; line-height:1.7; white-space:pre-line; margin-bottom:10px;
+  padding:12px; background:rgba(255,255,255,0.04); border-radius:9px; border-left:3px solid var(--warning);
+  word-break:break-all;
+}
+.danger-reason{ font-size:12px; color:var(--warning); margin-bottom:8px; white-space:pre-line; }
+.danger-warning{ font-size:12px; color:var(--danger); margin-bottom:18px; line-height:1.6; }
+.danger-actions{ display:flex; justify-content:flex-end; gap:10px; }
+.btn-reject{ padding:8px 18px; border-radius:8px; border:1px solid var(--border-strong); color:var(--text); }
+.btn-reject:hover{ background:rgba(255,255,255,0.06); }
+.btn-confirm{ padding:8px 18px; border-radius:8px; background:var(--accent); color:#fff; font-weight:600; }
+.btn-confirm:hover{ background:var(--accent-2); }
+
+.log-body{
+  font-family:ui-monospace,Consolas,"Courier New",monospace; font-size:11.5px;
+  color:var(--text-dim); line-height:1.75; max-height:60vh; overflow:auto;
+  background:rgba(0,0,0,0.28); border-radius:9px; padding:12px; white-space:pre-wrap; word-break:break-all;
+}
+
+/* Toast */
+.toast{
+  position:fixed; bottom:96px; left:50%; transform:translateX(-50%) translateY(8px);
+  background:rgba(28,31,40,0.95); border:1px solid var(--border-strong);
+  padding:9px 18px; border-radius:20px; font-size:12.5px; z-index:var(--z-toast);
+  opacity:0; transition:opacity .2s ease, transform .2s ease; max-width:70vw; text-align:center;
+}
+.toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* ==========================================================================
+   【需求点 Bug10】「视图选项」按钮 + 下拉菜单（分组方式 / 排序方式）
+   ========================================================================== */
+/* 【需求点 BUG-NEW3】视图选项按钮：只显示齿轮图标，不显示文字 */
+.view-opt-btn{
+  width:30px; height:30px; padding:0; font-size:15px; line-height:1;
+  border:1px solid var(--border); background:rgba(255,255,255,0.04);
+}
+.view-opt-btn:active{ transform:scale(0.96); }
+.view-opt-btn:hover{ background:rgba(255,255,255,0.08); color:var(--text); }
+.view-options-menu{
+  position:absolute; top:calc(100% + 6px); right:0; z-index:var(--z-popover);
+  min-width:180px; padding:10px 6px; border-radius:11px;
+  border:1px solid var(--border-strong); box-shadow:0 12px 34px rgba(0,0,0,0.45);
+}
+.view-options-menu.hidden{ display:none; }
+.search-row{ position:relative; }
+.vo-section{ padding:2px 4px; }
+.vo-title{ font-size:10.5px; color:var(--text-faint); letter-spacing:.5px; padding:4px 8px 6px; }
+.vo-item{
+  display:flex; align-items:center; gap:7px; padding:7px 9px; border-radius:8px;
+  font-size:12.5px; color:var(--text-dim); cursor:pointer; transition:background .15s ease;
+}
+.vo-item:hover{ background:rgba(255,255,255,0.07); color:var(--text); }
+.vo-item.active{ color:var(--accent); background:var(--accent-soft); font-weight:600; }
+.vo-check{ width:12px; font-size:11px; color:var(--accent); visibility:hidden; }
+.vo-item.active .vo-check{ visibility:visible; }
+.vo-sep{ height:1px; background:var(--border); margin:6px 8px; }
+
+/* 【需求点 Bug10】单列表模式的会话行（平铺展示 + 工作区标签） */
+.flat-list{ display:flex; flex-direction:column; }
+.session-ws-tag{
+  font-size:9.5px; padding:1px 6px; border-radius:8px; flex-shrink:0;
+  background:rgba(109,131,242,0.14); color:var(--accent);
+  max-width:96px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+/* ==========================================================================
+   【需求点 Bug6 / Bug7】设置面板：厂商分组 + 多模型标识逐条配置
+   ========================================================================== */
+.vendor-group .agent-bind code{
+  font-family:ui-monospace,Consolas,"Courier New",monospace; font-size:10.5px;
+  background:rgba(255,255,255,0.07); border-radius:4px; padding:1px 5px; color:var(--text-dim);
+}
+/* 【需求点 BUG-NEW1】模型行：模型1 / 模型2 …（与 API Key、Base URL 行同一版式） */
+.vendor-model-row{ margin-bottom:6px; }
+.vendor-model-row input{ flex:1; }
+.vendor-model-row .key-state{ flex-shrink:0; }
+.vendor-actions{ justify-content:flex-start; gap:10px; align-items:center; }
+.test-result .tr-line{ display:block; line-height:1.7; }
+
+/* ==========================================================================
+   【需求点 Bug8】左下角状态栏：逐条列出 7 个 Agent ↔ LLM 绑定
+   ========================================================================== */
+.sys-agent-list{ margin:2px 0 4px; }
+.sys-agent-line{
+  font-size:10.5px; color:var(--text-dim); line-height:1.65;
+  padding-left:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.sys-agent-line b{ color:var(--text); font-weight:600; }
+.sys-agent-line .sys-fallback{ color:var(--warning); }
+.sys-agent-empty{ font-size:10.5px; color:var(--text-faint); line-height:1.6; }
+
